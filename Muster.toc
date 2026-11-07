@@ -1,0 +1,27 @@
+## Interface: 16001
+## Title: |cffe87ad6Muster|r
+## Notes: Guild recruitment, without the spam: find people looking for a guild, ask each of them once, and remember how it went. Powered by NorgannonDB. /muster
+## Author: Maro
+## Version: 0.1.0
+## X-License: All Rights Reserved
+## Dependencies: NorgannonDB, NorgannonDB_Core
+## SavedVariables: MusterDB
+## IconTexture: Interface\AddOns\NorgannonDB_Core\media\marks\muster
+## AddonCompartmentFunc: Muster_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Muster_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Muster_OnAddonCompartmentLeave
+
+core.lua
+people.lua
+guards.lua
+asking.lua
+find.lua
+invite.lua
+adverts.lua
+results.lua
+window.lua
+pane_find.lua
+pane_people.lua
+pane_asking.lua
+pane_results.lua
+settings.lua
