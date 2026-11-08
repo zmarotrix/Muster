@@ -5,7 +5,7 @@
 ## Author: Maro
 ## Version: 0.2.1
 ## X-License: All Rights Reserved
-## Dependencies: NorgannonDB, NorgannonDB_Core
+## Dependencies: NorgannonDB_Core
 ## SavedVariables: MusterDB
 ## IconTexture: Interface\AddOns\NorgannonDB_Core\media\marks\muster
 ## AddonCompartmentFunc: Muster_OnAddonCompartmentClick
