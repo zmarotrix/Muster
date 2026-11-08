@@ -1,6 +1,7 @@
 -- The limits, in one place (docs/muster-v1.md section 4). Every send asks here first and tells here after.
 --
---   whispers   one at a time, at least 15 seconds apart, at most 20 an hour (a setting, never above 40)
+--   whispers   one at a time, 15 seconds apart and 20 an hour by default. You can set 5 to 120 seconds and 1 to 40 an hour;
+--              under 15 seconds or over 20 an hour, Muster warns, and near the end of the hour it says how many are left
 --   adverts    one per channel every 15 minutes (longer only)
 --   muted      if the game has muted or squelched you, nothing is sent, and Muster says why
 --
@@ -30,7 +31,7 @@ function Guards.PerHour()
 end
 
 function Guards.Gap()
-  return math.max(M.MIN_GAP, M.db.gap or M.MIN_GAP)
+  return math.max(M.MIN_GAP, M.db.gap or M.SAFE_GAP)
 end
 
 function Guards.AdvertSeconds()
@@ -75,6 +76,36 @@ function Guards:WhyNotWhisper()
 end
 
 function Guards:CountHour() return #sent() end
+
+---Whispers left in this rolling hour.
+function Guards:Left() return math.max(0, self.PerHour() - #sent()) end
+
+---How far through the gap since the last whisper, 0 to 1 (1 means ready).
+function Guards:GapProgress()
+  local list = sent()
+  local last = list[#list]
+  if not last then return 1 end
+  return math.max(0, math.min(1, (M.Now() - last) / self.Gap()))
+end
+
+---Warnings about the limits you've set, or nil: faster or more than is wise. They warn; they don't stop you.
+function Guards:LimitWarning()
+  local out = {}
+  if self.Gap() < M.SAFE_GAP then
+    out[#out + 1] = string.format("%d seconds apart reads as a bot to the people you whisper, and gets reported. 15 or more is safer.", self.Gap())
+  end
+  if self.PerHour() > M.SAFE_HOUR then
+    out[#out + 1] = string.format("%d an hour is a lot of strangers. Reports lead to a squelch, and a bad name for the guild.", self.PerHour())
+  end
+  return #out > 0 and table.concat(out, " ") or nil
+end
+
+---A warning when the hour is nearly used up, or nil.
+function Guards:LowWarning()
+  local left = self:Left()
+  if left == 0 or left > M.LOW_LEFT then return nil end
+  return left == 1 and "Last whisper this hour." or (left .. " whispers left this hour.")
+end
 function Guards:HourText() return string.format("%d of %d this hour", #sent(), self.PerHour()) end
 
 ---Notes a whisper as sent, so the gap and the hour count it.

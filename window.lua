@@ -41,7 +41,12 @@ local function actionButton(row, i)
     if action and not action.off then action.run(IsShiftKeyDown()) end
   end)
   b:SetHeight(22)
-  b:SetScript("OnEnter", function(self) if self.action then tip(self, self.action.tip) end end)
+  -- a tip may be a function, for text that changes while you hover (a countdown)
+  b:SetScript("OnEnter", function(self)
+    local t = self.action and self.action.tip
+    if type(t) == "function" then t = t() end
+    tip(self, t)
+  end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
   row.buttons[i] = b
   return b

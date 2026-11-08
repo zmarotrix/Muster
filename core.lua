@@ -226,8 +226,8 @@ end
 -------------------------------------------------------------------------------------------
 
 M.DEFAULTS = {
-  gap = 15,            -- seconds between whispers (longer only)
-  perHour = 20,        -- whispers an hour (up to M.HOUR_CEILING)
+  gap = 15,            -- seconds between whispers (5 at least; under 15 warns)
+  perHour = 20,        -- whispers an hour (up to M.HOUR_CEILING; over 20 warns)
   advertMinutes = 15,  -- per channel (longer only)
   minLevel = 10,       -- people below this aren't shown
   reaskDays = 90,      -- an asked person shows again after this long
@@ -235,7 +235,10 @@ M.DEFAULTS = {
   template = nil,      -- the template Find whispers with
 }
 M.HOUR_CEILING = 40
-M.MIN_GAP = 15
+M.MIN_GAP = 5          -- the floor: never faster than this
+M.SAFE_GAP = 15        -- under this, Muster warns: it reads as a bot to players and to reports
+M.SAFE_HOUR = 20       -- over this, Muster warns
+M.LOW_LEFT = 3         -- this many whispers left in the hour, and Find says so
 M.MIN_ADVERT_MINUTES = 15
 
 local function guildKey()

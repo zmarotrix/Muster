@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1, 2026-11-07
+
+- **Fixed: Whisper stayed greyed with "Next whisper in 15 s." forever.** The rows were drawn once and never again; they now wake up the
+  moment the gap has passed, and the tooltip counts down.
+- **Limits on Find:** a bar counting down to the next whisper, the hour's whispers as a bar, and both limits as sliders right there.
+  When only a few whispers are left this hour, it says so.
+- **You choose the limits:** 5 to 120 seconds between whispers (was 15 at least) and 1 to 40 an hour. Under 15 seconds or over 20 an
+  hour, Muster warns you, because that's what gets recruiters reported. It warns; it doesn't stop you.
+
 ## 0.2.0, 2026-11-07
 
 - **Search for exactly who you want.** A box on Find sends one `/who` with your own words: a class, a level or range, a zone, a name.

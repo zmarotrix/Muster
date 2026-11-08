@@ -50,7 +50,9 @@ local function rowFor(r)
     actions = {
       { text = "Never", width = 56, tip = "Never show them again, on any character.", run = function() M.Find:Never(r) end },
       { text = "Skip", width = 50, tip = "Hide them until you log out.", run = function() M.Find:Skip(r.name) end },
-      { text = "Whisper", width = 74, off = why ~= nil, tip = why or ("Sends, as you:\n" .. text), run = function()
+      { text = "Whisper", width = 74, off = why ~= nil, tip = function()
+        return M.Guards:WhyNotWhisper() or ("Sends, as you:\n" .. M.Asking:Fill(template, r))
+      end, run = function()
         M.Asking:Whisper(r, r.source, template)
       end },
     },
@@ -124,7 +126,7 @@ local function build(f)
       Window:Refresh()
     end
   end, true)
-  f.message:SetSize(SIDE, 84)
+  f.message:SetSize(SIDE, 70)
   f.message:SetPoint("TOPLEFT", h2, "BOTTOMLEFT", 0, -6)
   f.fields = Window.Line(f.side, 11, Colors.faint)
   f.fields:SetPoint("TOPLEFT", f.message, "BOTTOMLEFT", 0, -3)
@@ -135,13 +137,57 @@ local function build(f)
   f.preview = Window.Line(f.side, 13, Colors.text)
   f.preview:SetPoint("TOPLEFT", h3, "BOTTOMLEFT", 0, -6)
   f.preview:SetWidth(SIDE)
+  -- limits, pinned to the bottom: the countdown to the next whisper, the hour's budget, and the two settings
+  local function slider(label, min, max, step, get, set)
+    local row = CreateFrame("Frame", nil, f.side)
+    row:SetSize(SIDE, 20)
+    row.label = UI.Text(row, "body", 12, Colors.muted)
+    row.label:SetPoint("LEFT")
+    row.label:SetText(label)
+    row.value = UI.Text(row, "bold", 12, Colors.text)
+    row.value:SetPoint("RIGHT")
+    row.value:SetJustifyH("RIGHT")
+    row.slider = UI.Slider(row, min, max, step, function(v)
+      set(v)
+      row.value:SetText(tostring(v))
+      Window:Refresh()
+    end)
+    row.slider:SetSize(130, 18)
+    row.slider:SetPoint("RIGHT", -34, 0)
+    function row:Sync()
+      local v = get()
+      self.slider:SetValue(v, true)
+      self.value:SetText(tostring(v))
+    end
+    return row
+  end
+  f.perHour = slider("Whispers an hour", 1, M.HOUR_CEILING, 1, function() return M.Guards.PerHour() end, function(v) M.db.perHour = v end)
+  f.perHour:SetPoint("BOTTOMLEFT", 0, 2)
+  f.gap = slider("Seconds apart", M.MIN_GAP, 120, 5, function() return M.Guards.Gap() end, function(v) M.db.gap = v end)
+  f.gap:SetPoint("BOTTOMLEFT", f.perHour, "TOPLEFT", 0, 4)
+  f.warn = Window.Line(f.side, 11, Colors.text)
+  f.warn:SetPoint("BOTTOMLEFT", f.gap, "TOPLEFT", 0, 6)
+  f.warn:SetWidth(SIDE)
+  f.hourBar = UI.Bar(f.side, nil, 5)
+  f.hourBar:SetWidth(SIDE)
+  f.hourBar:SetPoint("BOTTOMLEFT", f.warn, "TOPLEFT", 0, 6)
+  f.hourText = Window.Line(f.side, 12)
+  f.hourText:SetPoint("BOTTOMLEFT", f.hourBar, "TOPLEFT", 0, 4)
+  f.hourText:SetWidth(SIDE)
+  f.gapBar = UI.Bar(f.side, nil, 5)
+  f.gapBar:SetWidth(SIDE)
+  f.gapBar:SetPoint("BOTTOMLEFT", f.hourText, "TOPLEFT", 0, 8)
+  f.gapText = Window.Line(f.side, 12, Colors.text)
+  f.gapText:SetPoint("BOTTOMLEFT", f.gapBar, "TOPLEFT", 0, 4)
+  f.gapText:SetWidth(SIDE)
   local h4 = Window.Heading(f.side, "Limits")
-  h4:SetPoint("TOPLEFT", f.preview, "BOTTOMLEFT", 0, -16)
-  f.limits = Window.Line(f.side, 12)
-  f.limits:SetPoint("TOPLEFT", h4, "BOTTOMLEFT", 0, -6)
-  f.limits:SetWidth(SIDE)
+  h4:SetPoint("BOTTOMLEFT", f.gapText, "TOPLEFT", 0, 6)
 end
 
+local fillList
+
+-- Once a second while Find is open: the countdowns, and the rows whenever whispering opens or closes, so a greyed
+-- Whisper button wakes up the moment the gap has passed.
 local function tick(f)
   local band = M.Find:NextBand()
   local wait = M.Find:Wait()
@@ -149,8 +195,24 @@ local function tick(f)
   f.next:SetLabel(wait > 0 and ("Next in " .. wait .. " s") or ("Next: levels " .. M.Find.BandText(band)))
   f.next:SetAlpha(busy and .5 or 1)
   f.go:SetAlpha(busy and .5 or 1)
-  local why = M.Guards:WhyNotWhisper()
-  f.limits:SetText((why and (why .. "\n") or "Ready.\n") .. M.Guards:HourText() .. ", at least " .. M.Guards.Gap() .. " s apart.")
+
+  local G = M.Guards
+  local why = G:WhyNotWhisper()
+  f.gapText:SetText(why and Window.Tag(why, "amber") or "Ready to whisper.")
+  f.gapBar:SetProgress(math.floor(G:GapProgress() * 100), 100)
+  local used, cap = G:CountHour(), G.PerHour()
+  local low = G:LowWarning()
+  f.hourText:SetText(string.format("%d of %d this hour", used, cap) .. (low and ("  " .. Window.Tag(low, "amber")) or ""))
+  f.hourBar:SetProgress(used, math.max(cap, 1))
+  local warning = G:LimitWarning()
+  f.warn:SetText(warning and Window.Tag(warning, "warn") or "")
+  f.warn:SetShown(warning ~= nil)
+
+  local state = why and "blocked" or "ready"
+  if state ~= f.whisperState then
+    f.whisperState = state
+    if fillList then fillList(f) end
+  end
 end
 
 -- Your recent searches, as small buttons: one click asks again.
@@ -233,7 +295,16 @@ local function fill(f)
     notice = Window.Tag("Your last " .. quiet .. " whispers got no answer. A different message might do better.", "amber")
   end
   f.notice:SetText(notice or ("Levels under " .. (M.db.minLevel or 10) .. ", people in guilds and anyone already asked are hidden."))
+  f.gap:Sync()
+  f.perHour:Sync()
+  f.whisperState = M.Guards:WhyNotWhisper() and "blocked" or "ready"
+  fillList(f)
+  tick(f)
+end
 
+-- The rows: leads heard in chat, then what the last /who or search found. Redrawn in place, keeping the scroll.
+function fillList(f)
+  local F = M.Find
   local items = {}
   local heard = F:Heard()
   if #heard > 0 then
@@ -244,7 +315,7 @@ local function fill(f)
     items[#items + 1] = { group = "Around now: " .. F.asking.text }
     for _, r in ipairs(F.rows) do items[#items + 1] = rowFor(r) end
   end
-  f.list:SetData(items)
+  f.list:SetData(items, true)
   if #items == 0 then
     f.empty:SetText(F.asking and "Nobody new here. Press Next for the next levels, or search for someone else."
       or "Press Next to ask the game who's around, or search for exactly who you want.\n\nPeople asking for a guild in channels you're in show up here by themselves (not during boss fights).")
@@ -252,7 +323,6 @@ local function fill(f)
   else
     f.empty:Hide()
   end
-  tick(f)
 end
 
 Window:AddPane("find", { build = build, fill = fill, tick = tick })

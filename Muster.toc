@@ -3,7 +3,7 @@
 ## Category: NorgannonDB
 ## Notes: Guild recruitment, without the spam: find people looking for a guild, ask each of them once, and remember how it went. Powered by NorgannonDB. /muster
 ## Author: Maro
-## Version: 0.2.0
+## Version: 0.2.1
 ## X-License: All Rights Reserved
 ## Dependencies: NorgannonDB, NorgannonDB_Core
 ## SavedVariables: MusterDB
