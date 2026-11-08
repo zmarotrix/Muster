@@ -15,7 +15,9 @@ local W, H = 900, 600
 local TABS = { { key = "find", label = "Find" }, { key = "people", label = "People" }, { key = "asking", label = "Asking" }, { key = "results", label = "Results" } }
 
 -- colours for states and tags, as text codes
-Window.CODES = { good = "|cff8fe08f", warn = "|cffe08a7a", amber = "|cffe7b04f", accent = "|cffe87ad6", muted = "|cffa8a08a", faint = "|cff6e6552" }
+-- (Core's state colours: Muster's "warn" is red, the suite's "bad"; "amber" is the suite's "warn")
+Window.CODES = { good = UI.State("good"), warn = UI.State("bad"), amber = UI.State("warn"), accent = UI.Code(UI.Accent("muster")),
+  muted = UI.Code(Colors.muted), faint = UI.Code(Colors.faint) }
 
 function Window.Tag(text, color)
   return (Window.CODES[color] or Window.CODES.muted) .. text .. "|r"
@@ -27,94 +29,12 @@ local win
 -- A list of rows: { group } or { title, sub, right, actions = { { text, run(shift), off, tip, width, style } }, onClick }
 -------------------------------------------------------------------------------------------
 
-local function tip(owner, text)
-  if not text or text == "" then return end
-  GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-  GameTooltip:AddLine(text, 1, 1, 1, true)
-  GameTooltip:Show()
-end
-Window.Tip = tip
+Window.Tip = UI.Tip
 
-local function actionButton(row, i)
-  local b = UI.Button(row, "", "quiet", function(self)
-    local action = self.action
-    if action and not action.off then action.run(IsShiftKeyDown()) end
-  end)
-  b:SetHeight(22)
-  -- a tip may be a function, for text that changes while you hover (a countdown)
-  b:SetScript("OnEnter", function(self)
-    local t = self.action and self.action.tip
-    if type(t) == "function" then t = t() end
-    tip(self, t)
-  end)
-  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  row.buttons[i] = b
-  return b
-end
-
-local function createRow(row, content)
-  row.buttons = {}
-  row.title = UI.Text(content, "body", 14)
-  row.title:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -4)
-  row.title:SetWordWrap(false)
-  row.title:SetJustifyH("LEFT")
-  row.sub = UI.Text(content, "body", 12, Colors.muted)
-  row.sub:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -2)
-  row.sub:SetWordWrap(false)
-  row.sub:SetJustifyH("LEFT")
-  row.right = UI.Text(content, "body", 12, Colors.muted)
-  row.right:SetJustifyH("RIGHT")
-end
-
-local function updateRow(row, item, titleY)
-  row.title:ClearAllPoints()
-  row.title:SetPoint("TOPLEFT", row, "TOPLEFT", 10, (item.sub and item.sub ~= "") and -4 or titleY)
-  row.title:SetText(item.title or "")
-  row.sub:SetText(item.sub or "")
-  local previous
-  for i = 1, math.max(#row.buttons, #(item.actions or {})) do
-    local action = item.actions and item.actions[i]
-    local b = row.buttons[i] or (action and actionButton(row, i))
-    if b then
-      b.action = action
-      b:SetShown(action ~= nil)
-      if action then
-        b:SetLabel(action.text)
-        b:SetWidth(action.width or 70)
-        b:SetAlpha(action.off and .4 or 1)
-        b:ClearAllPoints()
-        if previous then b:SetPoint("RIGHT", previous, "LEFT", -4, 0) else b:SetPoint("RIGHT", row, "RIGHT", -12, 0) end
-        previous = b
-      end
-    end
-  end
-  row.right:ClearAllPoints()
-  if previous then row.right:SetPoint("RIGHT", previous, "LEFT", -10, 0) else row.right:SetPoint("RIGHT", row, "RIGHT", -12, 0) end
-  row.right:SetText(item.right or "")
-  -- the title and the line under it stop short of the buttons and the right-hand text
-  local reserve = 12
-  for _, action in ipairs(item.actions or {}) do reserve = reserve + (action.width or 70) + 4 end
-  if item.right and item.right ~= "" then reserve = reserve + math.floor(row.right:GetStringWidth()) + 18 end
-  row.title:SetPoint("TOPRIGHT", row, "TOPRIGHT", -reserve, (item.sub and item.sub ~= "") and -4 or titleY)
-  row.sub:ClearAllPoints()
-  row.sub:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -2)
-  row.sub:SetPoint("TOPRIGHT", row.title, "BOTTOMRIGHT", 0, -2)
-end
-
----A virtual list of these rows.
+---The row list every tab shares (Core's UI.ActionList): { group } or { title, sub, right, tip, onClick,
+---actions = { { text, run(shift), off, tip, width } } }.
 function Window.RowList(parent, rowHeight)
-  local height = rowHeight or 38
-  local titleY = -math.floor((height - 14) / 2)
-  local list = UI.List(parent, {
-    rowHeight = height,
-    createRow = createRow,
-    updateRow = function(row, item) updateRow(row, item, titleY) end,
-    groupBand = true,
-    onClick = function(item, _, button) if item.onClick then item.onClick(button) end end,
-    onEnter = function(row, item) if item.tip then tip(row, item.tip) end end,
-    onLeave = function() GameTooltip:Hide() end,
-  })
-  return list
+  return UI.ActionList(parent, { rowHeight = rowHeight })
 end
 
 ---A line of text, left aligned, wrapping.
@@ -134,23 +54,9 @@ function Window.Heading(parent, text)
   return h
 end
 
----A single-line text box. onChange(text) on every edit the player makes.
+---A text box (Core's UI.Input). onChange(text) on every edit the player makes.
 function Window.Edit(parent, onChange, multiline)
-  local holder = UI.Pane(parent)
-  local edit = CreateFrame("EditBox", nil, holder)
-  edit:SetAutoFocus(false)
-  edit:SetFontObject(UI.Font("body", 13))
-  edit:SetTextInsets(6, 6, 4, 4)
-  edit:SetPoint("TOPLEFT", 2, -2)
-  edit:SetPoint("BOTTOMRIGHT", -2, 2)
-  if multiline then edit:SetMultiLine(true) end
-  edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-  if not multiline then edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end) end
-  edit:SetScript("OnTextChanged", function(self, user) if user and onChange then onChange(self:GetText()) end end)
-  holder.edit = edit
-  function holder:SetText(text) edit:SetText(text or "") end
-  function holder:GetText() return edit:GetText() end
-  return holder
+  return UI.Input(parent, { onChange = onChange, multiline = multiline })
 end
 
 -------------------------------------------------------------------------------------------
@@ -163,11 +69,11 @@ function Window:AddPane(key, pane)
 end
 
 local function footerText()
-  if not M:Guild() then return "|cffe7b04f*|r You're not in a guild, so Muster has nobody to recruit for." end
+  if not M:Guild() then return Window.CODES.amber .. "*|r You're not in a guild, so Muster has nobody to recruit for." end
   local muted = M.Guards:Muted()
-  if muted then return "|cffe08a7a*|r " .. muted end
-  if Core.Guild:CanInvite() then return "|cff8fe08f*|r You can invite. One click sends one message to one person." end
-  return "|cffe7b04f*|r You can't invite on this character, so Ask an officer takes the Invite button's place."
+  if muted then return Window.CODES.warn .. "*|r " .. muted end
+  if Core.Guild:CanInvite() then return Window.CODES.good .. "*|r You can invite. One click sends one message to one person." end
+  return Window.CODES.amber .. "*|r You can't invite on this character, so Ask an officer takes the Invite button's place."
 end
 
 local function fillPane()

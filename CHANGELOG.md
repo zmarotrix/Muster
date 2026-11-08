@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0, 2026-11-07
+
+- Built on NorgannonDB Core 1.20: `Core:NewAddon` for the setup, `Core.Names` for first and last names, and Core's row
+  list, text box and state colours. Same commands and tabs; `/muster help` now lists them all.
+- Full names learned from chat are shared with the rest of the suite, so Council and Guise can whisper the same people.
+- The "Show the minimap button" setting is gone: NorgannonDB > Minimap pins any add-on.
+- Settings asked for in combat open when the fight ends.
+
 ## 0.2.1, 2026-11-07
 
 - **Fixed: Whisper stayed greyed with "Next whisper in 15 s." forever.** The rows were drawn once and never again; they now wake up the

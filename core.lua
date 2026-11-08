@@ -7,57 +7,73 @@
 local ADDON = ...
 local Core = NorgannonCore
 
-Muster = Muster or {}
-local M = Muster
-M.addonName = ADDON or "Muster"
-
-if not (Core and Core:Require(1, 17)) then
-  M.disabled = true
-  C_Timer.After(5, function()
-    print("|cffe87ad6Muster|r needs NorgannonDB Core 1.17 or newer; it is turned off.")
-  end)
+if not (Core and Core.NewAddon) then
+  Muster = { disabled = true }
+  print("Muster needs NorgannonDB Core 1.20 or newer; it is turned off.")
   return
 end
 
-M.PREFIX = "|cffe87ad6Muster|r"
-function M:Print(msg) Core:Print(msg, self.PREFIX) end
+Muster = Muster or {}
+local M = Muster
 
 -------------------------------------------------------------------------------------------
--- Calling the client. Any call may be missing, refuse, or answer in secret values, which count as no answer.
+-- Saved data. Account-wide, so alts share who's been asked. People are kept per guild.
 -------------------------------------------------------------------------------------------
 
-local function clean(ok, ...)
-  if not ok then return nil end
-  local n = select("#", ...)
-  if n == 0 then return nil end
-  local out = { ... }
-  for i = 1, n do
-    if Core.IsSecret(out[i]) then out[i] = nil end
-  end
-  return unpack(out, 1, n)
-end
+M.DEFAULTS = {
+  gap = 15,            -- seconds between whispers (5 at least; under 15 warns)
+  perHour = 20,        -- whispers an hour (up to M.HOUR_CEILING; over 20 warns)
+  advertMinutes = 15,  -- per channel (longer only)
+  minLevel = 10,       -- people below this aren't shown
+  reaskDays = 90,      -- an asked person shows again after this long
+  listen = true,       -- Heard in chat
+  template = nil,      -- the template Find whispers with
+  guilds = {},         -- [realm/guild] = { people, needs, adverts }
+  chars = {},          -- [name@realm] = this character's own sending record
+}
+M.HOUR_CEILING = 40
+M.MIN_GAP = 5          -- the floor: never faster than this
+M.SAFE_GAP = 15        -- under this, Muster warns: it reads as a bot to players and to reports
+M.SAFE_HOUR = 20       -- over this, Muster warns
+M.LOW_LEFT = 3         -- this many whispers left in the hour, and Find says so
+M.MIN_ADVERT_MINUTES = 15
 
----The global function name(...), with errors and secret values turned into nil.
-function M.Global(name, ...)
-  local fn = rawget(_G, name)
-  if type(fn) ~= "function" then return nil end
-  return clean(pcall(fn, ...))
-end
+-- The suite's plumbing (Core:NewAddon): version check, MusterDB with its defaults, the slash command, the minimap row
+-- and the add-on menu. Left-click and /muster open the window; right-click opens settings.
+Core:NewAddon("muster", {
+  folder = ADDON, api = { 1, 20 },
+  db = "MusterDB", defaults = M.DEFAULTS,
+  slash = { "/muster" },
+  commands = {
+    find = { function() M.Window:Open("find") end, "the Find tab" },
+    people = { function() M.Window:Open("people") end, "everyone you've found or asked" },
+    asking = { function() M.Window:Open("asking") end, "what you whisper and advertise" },
+    results = { function() M.Window:Open("results") end, "who joined" },
+    add = { function(rest)
+      local name = M.Clean(rest)
+      if not name then return M:Print("/muster add First Last") end
+      local p = M.People:Add(name, { source = "added" })
+      if p then
+        M:Print(M.Colored(p.name, p.class) .. " is in People.")
+        M.Window:Open("people", p.key)
+      end
+    end, "First Last: put someone in People" },
+    status = { function() M:PrintStatus() end, "where things stand" },
+  },
+  minimap = {
+    status = function()
+      local waiting = M.People and M.db and M:Guild() and M.People:CountWaiting() or 0
+      if waiting > 0 then return waiting .. (waiting == 1 and " reply waits" or " replies wait") .. " for you" end
+    end,
+  },
+})
+if M.disabled then return end
 
----The namespaced client function ns.name(...).
-function M.In(ns, name, ...)
-  local t = rawget(_G, ns)
-  local fn = type(t) == "table" and t[name]
-  if type(fn) ~= "function" then return nil end
-  return clean(pcall(fn, ...))
-end
+-------------------------------------------------------------------------------------------
+-- Calling the client: Core's helpers. Any call may be missing, refuse, or answer in secret values.
+-------------------------------------------------------------------------------------------
 
----Does the client have ns.name (or the global name when ns is nil)?
-function M.Has(ns, name)
-  if not ns then return type(rawget(_G, name)) == "function" end
-  local t = rawget(_G, ns)
-  return type(t) == "table" and type(t[name]) == "function"
-end
+M.Global, M.In, M.Has, M.Now = Core.Global, Core.In, Core.Has, Core.Now
 
 ---Sends one chat line: a whisper or a channel message. Only ever called from a click. The client has both the namespaced
 ---call and the old global (/rprobe found both); the namespaced one is the one that stays.
@@ -67,7 +83,6 @@ function M.Say(text, kind, target)
   send(text, kind, nil, target)
 end
 
-function M.Now() return M.Global("GetServerTime") or time() end
 function M.Clock() return GetTime() end
 
 ---A game format string ("%s has joined the guild.") as a Lua pattern with its arguments captured.
@@ -86,52 +101,26 @@ end
 -- first; a whisper to the first alone fails. So a person is kept under the fullest name seen, and found by either.
 -------------------------------------------------------------------------------------------
 
----The name with any realm taken off, nil if secret or empty. "Elowen Brightwater-Realm" is "Elowen Brightwater".
-function M.Clean(name)
-  if type(name) ~= "string" or Core.IsSecret(name) then return nil end
-  name = strtrim(name)
-  if name == "" then return nil end
-  local short = M.Global("Ambiguate", name, "none")
-  return short or name
-end
+local Names = Core.Names
+M.Clean = Names.Full                 -- "Elowen Brightwater-Realm" is "Elowen Brightwater"; nil if secret or empty
+M.First = Names.First                -- who the roster and UnitName say
+M.HasSurname = Names.HasSurname
 
----The first name: who the roster and UnitName say.
-function M.First(name)
-  name = M.Clean(name)
-  return name and (name:match("^%S+") or name)
-end
-
----The key a person is saved under.
+---The key a person is saved under: the full name in lower case (People has always keyed on it).
 function M.Key(name)
-  name = M.Clean(name)
+  name = Names.Full(name)
   return name and string.lower(name)
-end
-
-function M.HasSurname(name)
-  name = M.Clean(name)
-  return name ~= nil and name:find(" ", 1, true) ~= nil
 end
 
 function M.Me() return M.Clean((M.Global("UnitName", "player"))) end
 
----Your own first and last name. GetUnitName gave "Tyrant Kuma" where UnitName gave "Tyrant" (seen by /rprobe).
-function M.MyFullName()
-  local full = M.Clean(M.Global("GetUnitName", "player", false))
-  if full and M.HasSurname(full) then return full end
-  return M.FullName(M.Me())
-end
+---Your own first and last name ("Tyrant Kuma").
+function M.MyFullName() return Names.Me() end
 
--- Full names learned from any chat line, by first name, so a roster name can be turned into something a whisper reaches.
-M.fullNames = {}
-function M.LearnName(name)
-  name = M.Clean(name)
-  if name and M.HasSurname(name) then M.fullNames[string.lower(M.First(name))] = name end
-end
+-- Full names are learned from chat by the Core (Core.Names); a roster's first name becomes one a whisper reaches.
+function M.LearnName(name) Names:Learn(name) end
 function M.FullName(name)
-  name = M.Clean(name)
-  if not name then return nil end
-  if M.HasSurname(name) then return name end
-  return M.fullNames[string.lower(name)] or name
+  return Names:Address(name) or Names.Full(name)
 end
 
 -------------------------------------------------------------------------------------------
@@ -222,24 +211,8 @@ function M.Tick()
 end
 
 -------------------------------------------------------------------------------------------
--- Saved data. Account-wide, so alts share who's been asked. People are kept per guild.
+-- This guild's part of the saved data
 -------------------------------------------------------------------------------------------
-
-M.DEFAULTS = {
-  gap = 15,            -- seconds between whispers (5 at least; under 15 warns)
-  perHour = 20,        -- whispers an hour (up to M.HOUR_CEILING; over 20 warns)
-  advertMinutes = 15,  -- per channel (longer only)
-  minLevel = 10,       -- people below this aren't shown
-  reaskDays = 90,      -- an asked person shows again after this long
-  listen = true,       -- Heard in chat
-  template = nil,      -- the template Find whispers with
-}
-M.HOUR_CEILING = 40
-M.MIN_GAP = 5          -- the floor: never faster than this
-M.SAFE_GAP = 15        -- under this, Muster warns: it reads as a bot to players and to reports
-M.SAFE_HOUR = 20       -- over this, Muster warns
-M.LOW_LEFT = 3         -- this many whispers left in the hour, and Find says so
-M.MIN_ADVERT_MINUTES = 15
 
 local function guildKey()
   local name = M.Global("GetGuildInfo", "player")
@@ -275,17 +248,7 @@ local function changed()
 end
 M.Changed = changed
 
-Core:On("ADDON_LOADED", M, function(_, name)
-  if name ~= M.addonName then return end
-  Core:Off("ADDON_LOADED", M)
-  local saved = rawget(_G, "MusterDB")
-  MusterDB = type(saved) == "table" and saved or {}
-  M.db = MusterDB
-  for k, v in pairs(M.DEFAULTS) do
-    if M.db[k] == nil then M.db[k] = v end
-  end
-  M.db.guilds = M.db.guilds or {}
-  M.db.chars = M.db.chars or {}
+M:OnReady(function()
   if M.Asking then M.Asking:EnsureTemplates() end
 end)
 
@@ -305,37 +268,6 @@ function M:Toggle()
   if win:IsShown() then win:Hide() else self.Window:Open() end
 end
 
-Core:RegisterAddon("muster", {
-  version = C_AddOns and C_AddOns.GetAddOnMetadata(M.addonName, "Version") or "0.1.0",
-  open = function() M:Toggle() end,
-})
-
-SLASH_MUSTER1 = "/muster"
-SlashCmdList["MUSTER"] = function(msg)
-  msg = strtrim(msg or "")
-  local lower = string.lower(msg)
-  if lower == "" then
-    M:Toggle()
-  elseif lower == "settings" or lower == "options" then
-    M:OpenSettings()
-  elseif lower == "find" or lower == "people" or lower == "asking" or lower == "results" then
-    M.Window:Open(lower)
-  elseif lower:match("^add ") then
-    local name = M.Clean(msg:sub(5))
-    if name then
-      local p = M.People:Add(name, { source = "added" })
-      if p then
-        M:Print(M.Colored(p.name, p.class) .. " is in People.")
-        M.Window:Open("people", p.key)
-      end
-    end
-  elseif lower == "status" then
-    M:PrintStatus()
-  else
-    M:Print("/muster opens the window. Also: /muster add First Last, find, people, asking, results, settings, status")
-  end
-end
-
 ---A short account of where things stand, for checking in game.
 function M:PrintStatus()
   local g = self:Guild()
@@ -347,22 +279,3 @@ function M:PrintStatus()
   self:Print("Whispers: " .. (self.Guards:WhyNotWhisper() or "ready") .. " " .. self.Guards:HourText() .. ".")
   self:Print("/who: " .. (self.Find:Status()))
 end
-
-local function onClick(button)
-  if button == "RightButton" then M:OpenSettings() else M:Toggle() end
-end
-local function tooltip(tt)
-  tt:AddLine("Muster", .91, .478, .839)
-  tt:AddLine("Guild recruitment, without the spam", 1, 1, 1)
-  local waiting = M.People and M.People:CountWaiting() or 0
-  if waiting > 0 then tt:AddLine(waiting .. (waiting == 1 and " reply waits" or " replies wait") .. " for you", .91, .478, .839) end
-  tt:AddLine("Click: open or close  ·  Right-click: settings  ·  Drag: move", .43, .4, .32)
-end
-Core:OnLogin(function() Core.MinimapButton:Add("muster", { onClick = onClick, tooltip = tooltip }) end)
-function Muster_OnAddonCompartmentClick(_, button) onClick(button) end
-function Muster_OnAddonCompartmentEnter(_, frame)
-  GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
-  tooltip(GameTooltip)
-  GameTooltip:Show()
-end
-function Muster_OnAddonCompartmentLeave() GameTooltip:Hide() end

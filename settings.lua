@@ -27,25 +27,13 @@ Core:OnLogin(function()
   list:Toggle("Listen for people asking for a guild", "In channels you're in. It only reads; nothing is sent.",
     function() return M.db.listen end, function(on) M.db.listen = on end)
 
-  list:Header("How it starts")
-  list:Toggle("Show the minimap button", "Muster is also in the game's addon menu and opens with /muster.",
-    function() return Core.MinimapButton:IsShown("muster") end,
-    function(on) Core.MinimapButton:SetShown("muster", on) end)
 
   page:SetScript("OnShow", function() list:Refresh() end)
   M.settingsPage, M.settingsList = page, list
-  M.settingsCategory = Core:AddSettingsPage(page, "Muster")
+  M:AddSettingsPage(page)
 
   local function perf(label, tbl, method) Core:RegisterPerf("Muster: " .. label, tbl, method, "muster") end
   perf("window refresh", M.Window, "Refresh")
   perf("channel line", M.Find, "OnChannel")
   perf("who answer", M.Find, "OnWhoList")
 end)
-
-function M:OpenSettings()
-  if self.settingsCategory and Settings and Settings.OpenToCategory then
-    Settings.OpenToCategory(self.settingsCategory:GetID())
-  else
-    Core:OpenSettings()
-  end
-end
