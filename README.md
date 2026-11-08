@@ -17,11 +17,12 @@ Muster sends less, and is better at who you ask and at not forgetting.
 
 ### Find
 People who said in chat that they're looking for a guild show first: they asked, so they're the best leads there are. Below them,
-**Next** asks the game who's around, one level band per press, and lists only people without a guild. Classes you need come first.
+**Next** asks the game who's around, one level band per press, or **search** for exactly who you want ("priest 40-50", a zone, a name).
+Only people without a guild are listed, and classes you need come first.
 Anyone already asked, anyone who said no, and anyone you chose never to see stays hidden.
 
 ### Asking
-Pick a whisper template, and **Whisper** sends it to one person, with their name, class and your guild filled in. You see exactly what
+Write your own message (right on Find, or several on the Asking tab), and **Whisper** sends it to one person, with their name, class and your guild filled in. You see exactly what
 they'll read before you send. Each template shows how many people it reached, how many replied and how many joined.
 
 ### People

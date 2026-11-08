@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0, 2026-11-07
+
+- **Search for exactly who you want.** A box on Find sends one `/who` with your own words: a class, a level or range, a zone, a name.
+  Class names become the game's class filter, so "priest 40-50" means priests from 40 to 50, and the game's own filters work too.
+  Enter or Search sends it. Your last six searches stay as buttons, one click to ask again. Next still walks the levels in bands.
+- **Edit the message right on Find.** The message you whisper with is an editable box beside the list, with what they'll read
+  filled in for the person you clicked. All messages are still on the Asking tab.
+
 ## 0.1.0, 2026-11-07
 
 First build: Stage 1 of `docs/muster-v1.md`, for one recruiter. Not yet run in game.

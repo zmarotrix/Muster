@@ -92,25 +92,67 @@ local function quietWho(on)
   end
 end
 
+-- Sends one /who. query: { filter, text, band? }.
+local function ask(self, query)
+  self.asking = query
+  self.sentAt, self.waiting, self.refused = M.Clock(), true, nil
+  quietWho(true)
+  M.In("C_FriendList", "SetWhoToUi", true)
+  local origin = rawget(_G, "Enum") and Enum.SocialWhoOrigin and Enum.SocialWhoOrigin.Social
+  if M.Has("C_FriendList", "SendWho") then
+    C_FriendList.SendWho(query.filter, origin)
+  else
+    SendWho(query.filter)
+  end
+  M.Changed()
+  return true
+end
+
 ---The Next button: one /who for the next band. Only ever called from a click.
 function Find:Next()
   if self:Wait() > 0 or self.waiting then return false end
   local bands = self:Bands()
   self.band = (self.band % #bands) + 1
   local b = bands[self.band]
-  self.asking = b
-  self.sentAt, self.waiting, self.refused = M.Clock(), true, nil
-  quietWho(true)
-  M.In("C_FriendList", "SetWhoToUi", true)
-  local origin = rawget(_G, "Enum") and Enum.SocialWhoOrigin and Enum.SocialWhoOrigin.Social
-  if M.Has("C_FriendList", "SendWho") then
-    C_FriendList.SendWho(Find.BandText(b), origin)
-  else
-    SendWho(Find.BandText(b))
-  end
-  M.Changed()
-  return true
+  return ask(self, { filter = Find.BandText(b), text = "levels " .. Find.BandText(b), band = self.band })
 end
+
+---What a typed search becomes for the server. Class names become the game's class filter (c-"Priest"), so "priest 40-50"
+---means priests from 40 to 50 rather than anyone with "priest" in a name, guild or zone. Anything else, including the
+---game's own filters (n-, g-, z-, r-, c-), goes as typed.
+function Find.Filter(text)
+  if type(text) ~= "string" then return nil end
+  text = strtrim(text):gsub("%s+", " ")
+  if text == "" then return nil end
+  if text:find('"', 1, true) or text:find("%f[%a][ngzrc]%-") then return text end
+  local out = {}
+  for word in text:gmatch("%S+") do
+    local class = M.ClassFile(word) or M.ClassFile(word:gsub("s$", ""))
+    out[#out + 1] = class and ('c-"' .. M.ClassName(class) .. '"') or word
+  end
+  return table.concat(out, " ")
+end
+
+local RECENT = 6
+
+---A search you typed: one /who with your own words. Only ever called from a click or Enter.
+function Find:Search(text)
+  if self:Wait() > 0 or self.waiting then return false end
+  local filter = Find.Filter(text)
+  if not filter then return false end
+  local typed = strtrim(text)
+  local recent = M.db.recentWho or {}
+  for i = #recent, 1, -1 do
+    if string.lower(recent[i]) == string.lower(typed) then table.remove(recent, i) end
+  end
+  table.insert(recent, 1, typed)
+  while #recent > RECENT do table.remove(recent) end
+  M.db.recentWho = recent
+  return ask(self, { filter = filter, text = "\"" .. typed .. "\"" })
+end
+
+---Your last few searches, newest first.
+function Find:Recent() return M.db.recentWho or {} end
 
 function Find:Tick()
   if self.waiting and M.Clock() - (self.sentAt or 0) > WHO_WAIT then
@@ -185,7 +227,8 @@ function Find:OnWhoList()
   sortRows(rows)
   self.rows, self.hidden, self.total, self.shownCount = rows, hidden, total, shown
   self.cut = total > shown or shown >= MAX_WHO
-  if self.cut then split(self, self.band) end
+  -- a band the server cut short is split for next time; a search you typed is yours to narrow
+  if self.cut and self.asking and self.asking.band then split(self, self.asking.band) end
   M.Changed()
 end
 
