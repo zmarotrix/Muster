@@ -9,7 +9,7 @@ local Core = NorgannonCore
 
 if not (Core and Core.NewAddon) then
   Muster = { disabled = true }
-  print("Muster needs NorgannonDB Core 1.20 or newer; it is turned off.")
+  print("Muster needs NorgannonDB Core 1.25 or newer; it is turned off.")
   return
 end
 
@@ -41,7 +41,7 @@ M.MIN_ADVERT_MINUTES = 15
 -- The suite's plumbing (Core:NewAddon): version check, MusterDB with its defaults, the slash command, the minimap row
 -- and the add-on menu. Left-click and /muster open the window; right-click opens settings.
 Core:NewAddon("muster", {
-  folder = ADDON, api = { 1, 20 },
+  folder = ADDON, api = { 1, 25 },
   db = "MusterDB", defaults = M.DEFAULTS,
   slash = { "/muster" },
   commands = {
