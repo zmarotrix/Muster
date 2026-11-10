@@ -9,7 +9,7 @@ local Core = NorgannonCore
 
 if not (Core and Core.NewAddon) then
   Muster = { disabled = true }
-  print("Muster needs NorgannonDB Core 1.25 or newer; it is turned off.")
+  print("Muster needs Norgannon Core 1.25 or newer; it is turned off.")
   return
 end
 
